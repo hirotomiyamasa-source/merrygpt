@@ -6,11 +6,23 @@
     <title>Dify Chatbot</title>
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Identity Services Library -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body class="bg-gray-100 font-sans">
 
-    <!-- Chat Screen -->
-    <div id="chat-screen" class="h-screen flex flex-col">
+    <!-- Login Screen -->
+    <div id="login-screen" class="flex items-center justify-center h-screen">
+        <div class="text-center p-8 bg-white rounded-lg shadow-md">
+            <h1 class="text-2xl font-bold mb-4">チャットボットへようこそ</h1>
+            <p class="mb-6 text-gray-600">利用するにはGoogleアカウントでログインしてください。</p>
+            <!-- Google Login Button will be rendered here -->
+            <div id="g_id_signin"></div>
+        </div>
+    </div>
+
+    <!-- Chat Screen (hidden by default) -->
+    <div id="chat-screen" class="hidden h-screen flex flex-col">
         <header class="bg-blue-600 text-white p-4 shadow-md">
             <h1 class="text-xl font-bold text-center">AIチャットボット</h1>
         </header>
@@ -54,12 +66,23 @@
         // Self-Hosted版: http://your-domain/v1
         const DIFY_API_URL = 'https://api.dify.ai/v1/chat-messages';
 
+        // GoogleのクライアントIDを入力してください
+        const GOOGLE_CLIENT_ID = '777500395803-mgpes4lrspm0d6ih54480u889493rku0.apps.googleusercontent.com';
+
+        // このアプリの使用を許可するGoogleアカウントのメールアドレスをリストで指定
+        const ALLOWED_EMAIL_ACCOUNTS = [
+            'hiroto.miyamasa@fabulacorp.com',
+            ''
+        ];
+
         // --- ⚙️ 設定はここまで ⚙️ ---
 
 
         // --- アプリケーションのロジック ---
 
         // HTML要素の取得
+        const loginScreen = document.getElementById('login-screen');
+        const chatScreen = document.getElementById('chat-screen');
         const chatContainer = document.getElementById('chat-container');
         const messageForm = document.getElementById('message-form');
         const messageInput = document.getElementById('message-input');
@@ -68,10 +91,49 @@
 
         let conversationId = null; // 会話のIDを保持
 
-        // ページが読み込まれたときに最初のメッセージを表示
+        // JWTトークンをデコードしてペイロードを取得するヘルパー関数
+        function parseJwt(token) {
+            try {
+                return JSON.parse(atob(token.split('.')[1]));
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Google認証成功時のコールバック関数
+        function handleCredentialResponse(response) {
+            const credential = response.credential;
+            const profilePayload = parseJwt(credential);
+
+            if (profilePayload) {
+                const userEmail = profilePayload.email;
+                console.log('Logged in user:', userEmail);
+
+                // 許可されたアカウントかチェック
+                if (ALLOWED_EMAIL_ACCOUNTS.includes(userEmail)) {
+                    // 認証成功
+                    loginScreen.classList.add('hidden');
+                    chatScreen.classList.remove('hidden');
+                    addMessageToChat('こんにちは！何かお手伝いできることはありますか？', 'bot');
+                } else {
+                    // 認証失敗
+                    alert('このGoogleアカウントは利用が許可されていません。');
+                }
+            } else {
+                alert('ログイン中にエラーが発生しました。');
+            }
+        }
+
+        // Googleログインボタンの初期化と描画
         window.onload = function () {
-            addMessageToChat('こんにちは！何かお手伝いできることはありますか？', 'bot');
-            messageInput.focus();
+            google.accounts.id.initialize({
+                client_id: GOOGLE_CLIENT_ID,
+                callback: handleCredentialResponse
+            });
+            google.accounts.id.renderButton(
+                document.getElementById('g_id_signin'),
+                { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill' }
+            );
         };
 
         // メッセージをチャット画面に追加する関数
@@ -118,7 +180,7 @@
                         inputs: {},
                         query: userInput,
                         response_mode: 'blocking', // or 'streaming'
-                        user: 'public-user', // ユーザーを識別するID（固定値でOK）
+                        user: 'google-auth-user', // ユーザーを識別するID
                         conversation_id: conversationId || ''
                     })
                 });
