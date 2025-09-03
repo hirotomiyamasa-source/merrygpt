@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dify Chatbot</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Identity Services Library -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <!-- Login Screen -->
+    <div id="login-screen" class="flex items-center justify-center h-screen">
+        <div class="text-center p-8 bg-white rounded-lg shadow-md">
+            <h1 class="text-2xl font-bold mb-4">チャットボットへようこそ</h1>
+            <p class="mb-6 text-gray-600">利用するにはGoogleアカウントでログインしてください。</p>
+            <!-- Google Login Button will be rendered here -->
+            <div id="g_id_signin"></div>
+        </div>
+    </div>
+
+    <!-- Chat Screen (hidden by default) -->
+    <div id="chat-screen" class="hidden h-screen flex flex-col">
+        <header class="bg-blue-600 text-white p-4 shadow-md">
+            <h1 class="text-xl font-bold text-center">AIチャットボット</h1>
+        </header>
+
+        <!-- Chat Messages -->
+        <div id="chat-container" class="flex-1 p-4 overflow-y-auto bg-gray-50">
+            <!-- Messages will be appended here -->
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loading-indicator" class="hidden p-4 text-center">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        </div>
+
+        <!-- Message Input Form -->
+        <footer class="p-4 bg-white border-t">
+            <form id="message-form" class="flex items-center space-x-2">
+                <input 
+                    type="text" 
+                    id="message-input" 
+                    placeholder="メッセージを入力..."
+                    class="flex-1 p-3 border rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autocomplete="off">
+                <button 
+                    type="submit" 
+                    class="bg-blue-600 text-white rounded-full p-3 hover:bg-blue-700 transition duration-300 disabled:bg-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </form>
+        </footer>
+    </div>
+
+    <script>
+        // --- ⚙️ ここから設定 ⚙️ ---
+
+        // ステップ1で取得したDifyのAPIキーを入力
+        const DIFY_API_KEY = 'YOUR_DIFY_API_KEY'; 
+
+        // DifyのAPIエンドポイント (通常はこのままでOK)
+        // Cloud版: https://api.dify.ai/v1
+        // Self-Hosted版: http://your-domain/v1
+        const DIFY_API_URL = 'https://api.dify.ai/v1/chat-messages';
+
+        // ステップ1で取得したGoogleのクライアントIDを入力
+        const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+
+        // このアプリの使用を許可するGoogleアカウントのメールアドレスをリストで指定
+        const ALLOWED_EMAIL_ACCOUNTS = [
+            'user1@example.com',
+            'user2@example.com'
+        ];
+
+        // --- ⚙️ 設定はここまで ⚙️ ---
+
+
+        // --- アプリケーションのロジック ---
+
+        // HTML要素の取得
+        const loginScreen = document.getElementById('login-screen');
+        const chatScreen = document.getElementById('chat-screen');
+        const chatContainer = document.getElementById('chat-container');
+        const messageForm = document.getElementById('message-form');
+        const messageInput = document.getElementById('message-input');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const submitButton = messageForm.querySelector('button');
+
+        let conversationId = null; // 会話のIDを保持
+
+        // JWTトークンをデコードしてペイロードを取得するヘルパー関数
+        function parseJwt(token) {
+            try {
+                return JSON.parse(atob(token.split('.')[1]));
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Google認証成功時のコールバック関数
+        function handleCredentialResponse(response) {
+            const credential = response.credential;
+            const profilePayload = parseJwt(credential);
+
+            if (profilePayload) {
+                const userEmail = profilePayload.email;
+                console.log('Logged in user:', userEmail);
+
+                // 許可されたアカウントかチェック
+                if (ALLOWED_EMAIL_ACCOUNTS.includes(userEmail)) {
+                    // 認証成功
+                    loginScreen.classList.add('hidden');
+                    chatScreen.classList.remove('hidden');
+                    addMessageToChat('こんにちは！何かお手伝いできることはありますか？', 'bot');
+                } else {
+                    // 認証失敗
+                    alert('このGoogleアカウントは利用が許可されていません。');
+                }
+            } else {
+                alert('ログイン中にエラーが発生しました。');
+            }
+        }
+
+        // Googleログインボタンの初期化と描画
+        window.onload = function () {
+            google.accounts.id.initialize({
+                client_id: GOOGLE_CLIENT_ID,
+                callback: handleCredentialResponse
+            });
+            google.accounts.id.renderButton(
+                document.getElementById('g_id_signin'),
+                { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill' }
+            );
+        };
+
+        // メッセージをチャット画面に追加する関数
+        function addMessageToChat(message, sender) {
+            const messageElement = document.createElement('div');
+            const bubbleElement = document.createElement('div');
+
+            messageElement.classList.add('mb-4', 'flex');
+            bubbleElement.classList.add('p-3', 'rounded-lg', 'max-w-md', 'md:max-w-lg');
+            bubbleElement.innerText = message;
+
+            if (sender === 'user') {
+                messageElement.classList.add('justify-end');
+                bubbleElement.classList.add('bg-blue-500', 'text-white');
+            } else {
+                messageElement.classList.add('justify-start');
+                bubbleElement.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
+            }
+
+            messageElement.appendChild(bubbleElement);
+            chatContainer.appendChild(messageElement);
+            chatContainer.scrollTop = chatContainer.scrollHeight; // 自動で一番下にスクロール
+        }
+
+        // メッセージ送信時の処理
+        messageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userInput = messageInput.value.trim();
+            if (userInput === '') return;
+
+            addMessageToChat(userInput, 'user');
+            messageInput.value = '';
+            loadingIndicator.classList.remove('hidden');
+            submitButton.disabled = true;
+
+            try {
+                const response = await fetch(DIFY_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${DIFY_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        inputs: {},
+                        query: userInput,
+                        response_mode: 'blocking', // or 'streaming'
+                        user: 'google-auth-user', // ユーザーを識別するID
+                        conversation_id: conversationId || ''
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`Dify API Error: ${errorData.message || response.statusText}`);
+                }
+                
+                const data = await response.json();
+                addMessageToChat(data.answer, 'bot');
+                conversationId = data.conversation_id; // 次の会話のためにIDを更新
+
+            } catch (error) {
+                console.error('Error fetching Dify API:', error);
+                addMessageToChat('エラーが発生しました。しばらくしてからもう一度お試しください。', 'bot');
+            } finally {
+                loadingIndicator.classList.add('hidden');
+                submitButton.disabled = false;
+                messageInput.focus(); // 入力欄にフォーカスを戻す
+            }
+        });
+    </script>
+
+</body>
+</html>
